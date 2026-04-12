@@ -7,6 +7,8 @@ import { createClient } from "@/lib/supabase-server";
 import { logout } from "@/app/auth/actions";
 import { LogOut, User } from "lucide-react";
 
+import { MobileNav } from "@/components/ui/MobileNav";
+
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
@@ -36,6 +38,8 @@ export default async function RootLayout({
             <Link href="/" className="flex items-center gap-2">
               <span className="text-2xl font-bold bg-gradient-to-r from-yellow-500 via-teal-500 to-purple-600 bg-clip-text text-transparent">LontaraVibe</span>
             </Link>
+            
+            {/* Navigasi Desktop */}
             <nav className="hidden md:flex gap-6 items-center">
               <Link href="/" className="text-sm font-medium hover:text-teal-600 transition-colors">Beranda</Link>
               <div className="relative group py-2">
@@ -51,9 +55,11 @@ export default async function RootLayout({
                 <Link href="/dashboard/admin" className="text-sm font-medium hover:text-teal-600 transition-colors">Analytics UMKM</Link>
               )}
             </nav>
-            <div className="flex gap-4 items-center">
+
+            {/* Auth & Profil Desktop */}
+            <div className="hidden md:flex gap-4 items-center">
                {user ? (
-                  <div className="relative group py-2 hidden sm:block">
+                  <div className="relative group py-2">
                     <button className="text-sm font-medium text-slate-600 hover:text-teal-600 flex items-center gap-2 transition-colors cursor-pointer focus:outline-none">
                       <User size={16}/> {user.user_metadata?.full_name || user.email?.split('@')[0]}
                     </button>
@@ -88,6 +94,9 @@ export default async function RootLayout({
                  </>
                )}
             </div>
+
+            {/* Navigasi Mobile Khusus HP / Tablet */}
+            <MobileNav user={user} isAdmin={isAdmin} />
           </div>
         </header>
         <main className="flex-1">
