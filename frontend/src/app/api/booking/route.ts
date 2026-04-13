@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase-server";
+import { sendTicketEmail } from "@/lib/email";
 
 export async function POST(req: Request) {
   try {
@@ -18,9 +19,10 @@ export async function POST(req: Request) {
        return NextResponse.json({ success: false, error: "Data booking tidak lengkap" }, { status: 400 });
     }
 
-    // Get Workshop Price to calculate total
-    const { data: workshop } = await supabase.from('workshops').select('price').eq('id', workshop_id).single();
+    // Get Workshop Price and Title to calculate total and email receipt
+    const { data: workshop } = await supabase.from('workshops').select('title, price').eq('id', workshop_id).single();
     const price = workshop ? workshop.price : 150000;
+    const title = workshop?.title || "Workshop Spesial";
     const total_price = price * (guests || 1);
 
     // Insert ke Supabase
@@ -34,8 +36,13 @@ export async function POST(req: Request) {
     
     if (error) throw error;
     
-    // Optional: Call FastAPI untuk real-time prediction counter (diabaikan untuk speed MVP)
-
+    // PEMICU EMAIL GMAIL: Tembak email rahasia ke alamat terdaftar setelah sukses DB  
+    const userName = user.user_metadata?.full_name || user.email?.split('@')[0] || "Teman Vibe";
+    if (user.email) {
+       // Jalankan di latar tanpa menunggu (Asynchronous) agar UI pengguna tidak nge-lag saat Checkout
+       sendTicketEmail(user.email, userName, title, total_price, workshop_id, data[0].id)
+         .catch(err => console.error("Nodemailer gagal beroperasi:", err));
+    }
     return NextResponse.json({ 
       success: true, 
       booking_id: data[0].id, 

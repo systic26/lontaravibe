@@ -1,10 +1,16 @@
 import { createClient } from "@/lib/supabase-server";
+import { Metadata } from "next";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { MapPin, Star, Clock, Package, Sparkles, TrendingUp, Flame } from "lucide-react";
 import Link from "next/link";
 import { BackButton } from "@/components/ui/BackButton";
+
+export const metadata: Metadata = {
+  title: 'Katalog LontaraVibe - Temukan Kelas Kerajinan Lokal & DIY Kits',
+  description: 'Eksplorasi ribuan kelas workshop kerajinan autentik, ragam modul DIY Kit siap antar, dan mari dukung UMKM Nusantara berkembang bersama LontaraVibe.',
+};
 
 async function getRecommendations(userId: string) {
   try {
@@ -19,7 +25,8 @@ async function getRecommendations(userId: string) {
 
 async function getInsights() {
   try {
-    const res = await fetch(`http://localhost:8000/predict_demand`, { cache: "no-store" });
+    // OPTIMASI: Melakukan re-generate AI Data hanya setiap 1 jam sekali (3600 detik)
+    const res = await fetch(`http://localhost:8000/predict_demand`, { next: { revalidate: 3600 } });
     if (!res.ok) return null;
     return await res.json();
   } catch (err) {
@@ -27,10 +34,33 @@ async function getInsights() {
   }
 }
 
-export default async function ExplorePage() {
+const HighlightedText = ({ text, highlight }: { text: string, highlight: string }) => {
+  if (!highlight) return <>{text}</>;
+  const parts = text.split(new RegExp(`(${highlight})`, 'gi'));
+  return (
+    <span>
+      {parts.map((part, i) => 
+        part.toLowerCase() === highlight.toLowerCase() ? (
+          <span key={i} className="bg-yellow-300 text-yellow-900 px-1 mx-0.5 rounded-sm animate-pulse shadow-sm font-extrabold inline-block transition-all">
+            {part}
+          </span>
+        ) : (
+          <span key={i}>{part}</span>
+        )
+      )}
+    </span>
+  );
+};
+
+export default async function ExplorePage(props: any) {
   const supabase = await createClient();
   const { data: userData } = await supabase.auth.getUser();
   const userId = userData?.user?.id || "guest";
+
+  // Amankan search params untuk Next.js 14/15
+  const searchParams = props.searchParams ? await props.searchParams : {};
+  const queryText = typeof searchParams.q === 'string' ? searchParams.q : "";
+  const qSafe = queryText.toLowerCase();
 
   // Parallel Fetching
   const [
@@ -46,7 +76,17 @@ export default async function ExplorePage() {
   ]);
 
   // Fallback in case Supabase is empty or err
-  const displayData = workshops && workshops.length > 0 ? workshops : [];
+  let displayData = workshops && workshops.length > 0 ? workshops : [];
+  
+  // Filtering berdasarkan kolom Pencarian
+  if (qSafe) {
+     displayData = displayData.filter((w: any) => 
+        w.title?.toLowerCase().includes(qSafe) || 
+        w.category?.toLowerCase().includes(qSafe) ||
+        w.location?.toLowerCase().includes(qSafe)
+     );
+  }
+
   const displayKits = diyKits && diyKits.length > 0 ? diyKits : [];
   const hasInsights = insightsData && insightsData.success;
 
@@ -54,15 +94,20 @@ export default async function ExplorePage() {
     <div className="container mx-auto px-4 md:px-8 py-12">
       <BackButton fallbackPath="/" />
       
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-end mb-8 gap-4 mt-6">
+      <div className="flex flex-col justify-between items-start mb-8 gap-4 mt-6">
         <div>
            <h1 className="text-3xl font-bold text-slate-900 mb-2">Explore LontaraVibe</h1>
            <p className="text-slate-500">Temukan lokakarya kerajinan lokal dan DIY Kit terbaik untuk Anda.</p>
         </div>
+        {queryText && (
+          <Badge className="text-sm bg-purple-100 text-purple-700 px-3 py-1 font-medium border-purple-200">
+            Hasil Pencarian untuk: <strong className="ml-1">"{queryText}"</strong>
+          </Badge>
+        )}
       </div>
 
       {/* AI Insight Box */}
-      {hasInsights && (
+      {hasInsights && !queryText && (
         <div className="bg-gradient-to-r from-teal-50 to-emerald-50 border border-teal-100 p-5 rounded-xl shadow-md mb-8 flex items-start gap-4 hover:shadow-lg transition-all duration-300 transform hover:-translate-y-1">
           <Sparkles className="text-teal-600 mt-1 flex-shrink-0" size={28} />
           <div>
@@ -75,7 +120,7 @@ export default async function ExplorePage() {
       )}
 
       {/* Rekomendasi Untuk Kamu */}
-      {recommendations.length > 0 && (
+      {recommendations.length > 0 && !queryText && (
         <div className="mb-12">
           <h2 className="text-2xl font-bold text-slate-900 mb-2 flex items-center gap-2">
             <TrendingUp className="text-amber-500" /> Rekomendasi untuk Kamu
@@ -114,13 +159,28 @@ export default async function ExplorePage() {
          </div>
       )}
 
-      {displayData.length === 0 && !error ? (
+      {queryText && displayData.length === 0 ? (
+         <div className="text-center py-20 bg-amber-50/50 border border-amber-200 rounded-xl mt-8 animate-in zoom-in-95 duration-500">
+           <div className="text-6xl mb-6">🔍</div>
+           <h3 className="text-2xl font-bold text-amber-900 mb-3">
+              Kata <span className="text-amber-600">"{queryText}"</span> Tidak Ditemukan
+           </h3>
+           <p className="text-amber-700 max-w-md mx-auto mb-8">
+              Wah, sepertinya kelas atau lokasi kerajinan tersebut belum tersedia di katalog kami. Coba gunakan kata kunci lain seperti <b className="font-semibold">"Keramik"</b>, <b className="font-semibold">"Tenun"</b>, atau hapus teks pencerian Anda.
+           </p>
+           <Link href="/explore">
+             <Button className="bg-amber-500 hover:bg-amber-600 text-white px-8 h-12 rounded-full font-bold shadow-lg transition-transform active:scale-95">Reset Pencarian</Button>
+           </Link>
+         </div>
+      ) : displayData.length === 0 && !error ? (
          <div className="text-center py-20 text-slate-500 bg-slate-50 border rounded-lg">
            Belum ada katalog workshop saat ini! Silakan hubungi admin atau kembalilah secara berkala.
          </div>
       ) : (
          <>
-          <h2 className="text-2xl font-bold text-slate-900 mb-6">Katalog Lengkap</h2>
+          <h2 className="text-2xl font-bold text-slate-900 mb-6 mt-8">
+             {queryText ? "Hasil Pencarian Anda" : "Katalog Lengkap"}
+          </h2>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {displayData.map((item) => (
               <Card key={item.id} className="overflow-hidden border-0 shadow-md shadow-slate-100/50 hover:shadow-xl transition-all duration-300 hover:scale-105 flex flex-col group">
@@ -133,7 +193,9 @@ export default async function ExplorePage() {
                 <CardHeader className="pb-3">
                   <div className="flex justify-between items-start mb-2 flex-wrap gap-2">
                      <div className="flex flex-wrap gap-2">
-                       <Badge variant="outline" className="text-xs bg-white text-teal-600 border-teal-200">{item.category}</Badge>
+                       <Badge variant="outline" className="text-xs bg-white text-teal-600 border-teal-200">
+                          <HighlightedText text={item.category} highlight={queryText} />
+                       </Badge>
                        {item.category === 'Keramik' && (
                          <Badge className="text-[10px] bg-red-100 text-red-600 border-0 flex items-center gap-1 font-bold shadow-sm"><Flame size={12}/> Trending</Badge>
                        )}
@@ -143,12 +205,14 @@ export default async function ExplorePage() {
                      </div>
                      <span className="font-semibold text-teal-600 whitespace-nowrap">Rp {item.price?.toLocaleString('id-ID')}</span>
                   </div>
-                  <CardTitle className="text-xl text-slate-900 group-hover:text-teal-600 transition-colors">{item.title}</CardTitle>
+                  <CardTitle className="text-xl text-slate-900 group-hover:text-teal-600 transition-colors">
+                     <HighlightedText text={item.title} highlight={queryText} />
+                  </CardTitle>
                 </CardHeader>
                 <CardContent className="flex-1">
                   <div className="flex items-center gap-2 text-sm text-slate-600 mb-2">
                     <MapPin size={16} className="text-slate-400" />
-                    {item.location}
+                    <HighlightedText text={item.location} highlight={queryText} />
                   </div>
                   <div className="flex items-center gap-2 text-sm text-slate-600">
                     <Clock size={16} className="text-slate-400" />
@@ -157,8 +221,8 @@ export default async function ExplorePage() {
                 </CardContent>
                 <CardFooter className="pt-0">
                    <Link href={`/workshop/${item.id}`} className="w-full">
-                     <Button className="w-full bg-slate-900 hover:bg-slate-800 text-white shadow-md transition-transform active:scale-95">
-                       Lihat Detail & Pesan
+                     <Button className="w-full bg-slate-900 hover:bg-slate-800 text-white shadow-md transition-transform active:scale-95 flex items-center justify-center gap-2">
+                       {queryText ? "Pilih Kelas Ini" : "Lihat Detail & Pesan"}
                      </Button>
                    </Link>
                 </CardFooter>
@@ -168,7 +232,7 @@ export default async function ExplorePage() {
          </>
       )}
 
-      {displayKits.length > 0 && (
+      {displayKits.length > 0 && !queryText && (
         <div className="mt-16">
           <h2 className="text-2xl font-bold text-slate-900 mb-6 flex items-center gap-2">
             <Package className="text-purple-600" /> Beli DIY Kit Langsung
